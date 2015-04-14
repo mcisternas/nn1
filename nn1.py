@@ -6,7 +6,9 @@ import csv as csv
 from scipy.optimize import minimize, check_grad, approx_fprime
 from sklearn.cross_validation import train_test_split
 from sklearn.preprocessing import LabelEncoder
-import time
+import time, timeit
+#from multiprocessing import Pool
+#p = Pool()
 
 ###########################################################
 
@@ -90,6 +92,22 @@ def predict(Theta1, Theta2, X):
 
 ###########################################################
 
+def forward_prop(X, Theta1, Theta2):
+
+  m = np.size(X, 0)
+
+  A1 = X
+  A1 = np.append(np.ones((m,1)),A1,1)   #[ones(m, 1) A1]
+  Z2 = np.dot(A1,Theta1.T)   #A1*Theta1';
+  A2 = sigmoid(Z2)
+  A2 = np.append(np.ones((m,1)),A2,1)   #[ones(m, 1) A2];
+  Z3 = np.dot(A2,Theta2.T)   #A2*Theta2';
+  A3 = sigmoid(Z3)   # this will be my h(x)
+  
+  return A1, Z2, A2, Z3, A3
+
+###########################################################
+
 #NNCOSTFUNCTION Implements the neural network cost function for a two layer
 #neural network which performs classification
 #   [J grad] = NNCOSTFUNCTON(nn_params, hidden_layer_size, num_labels, ...
@@ -102,6 +120,8 @@ def predict(Theta1, Theta2, X):
 
 def nnCostFunction(nn_params, input_layer_size, hidden_layer_size, \
                    num_labels, X, y, reg_param):
+
+  #start_cost = timeit.default_timer()
 
 # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
 # for our 2 layer neural network
@@ -120,46 +140,33 @@ def nnCostFunction(nn_params, input_layer_size, hidden_layer_size, \
   # You need to return the following variables correctly 
   J = 0
 
-# Part 1: Feedforward the neural network and return the cost in the
-#         variable J. After implementing Part 1, you can verify that your
-#         cost function computation is correct by verifying the cost
-#         computed in ex4.m
+  # Part 1: Feedforward the neural network and return the cost in the
+  #         variable J. After implementing Part 1, you can verify that your
+  #         cost function computation is correct by verifying the cost
+  #         computed in ex4.m
 
-  A1 = X
-  A1 = np.append(np.ones((m,1)),A1,1)   #[ones(m, 1) A1]
+  A3 = forward_prop(X, Theta1, Theta2)[4]
 
-  Z2 = np.dot(A1,Theta1.T)   #A1*Theta1';
-  A2 = sigmoid(Z2)
-  A2 = np.append(np.ones((m,1)),A2,1)   #[ones(m, 1) A2];
-
-  Z3 = np.dot(A2,Theta2.T)   #A2*Theta2';
-  A3 = sigmoid(Z3)   # this will be my h(x)
-
-  #Y = zeros(size(y),num_labels);
   eye_matrix = np.eye(num_labels)
   Y = eye_matrix[y.astype(int),:]
    
   J = (1./m)*np.sum( -Y*np.log(A3) - (1.-Y)*np.log(1.-A3) )  # unreg cost
-   
-  #for i in range(m):
-  #  #J = J + sum( -Y(i,:).*log(A3(i,:)) - (1-Y(i,:)).*log(1.-A3(i,:)), 2);
-  #  J = J + np.sum( -Y[i:i+1,:]*np.log(A3[i:i+1,:]) - \
-  #        (1.-Y[i:i+1,:])*np.log(1.-A3[i:i+1,:]), 1)
     
   # Now implement regularization term
   J_reg1, J_reg2 = 0, 0
 
   Theta1_tmp = Theta1
   Theta1_tmp[:,0:1] = 0
-  #J_reg1 = np.sum(np.sum(Theta1_tmp**2,1),0)
   J_reg1 = np.sum(Theta1_tmp**2)
 
   Theta2_tmp = Theta2
   Theta2_tmp[:,0:1] = 0
-  #J_reg2 = np.sum(np.sum(Theta2_tmp**2,1),0)
   J_reg2 = np.sum(Theta2_tmp**2)
 
   J = J + (J_reg1 + J_reg2)*reg_param/(2*m)   # reg cost
+
+  #end_cost = timeit.default_timer()
+  #print "    Cost run time: %f" %(end_cost-start_cost)
 
   return J
 
@@ -177,9 +184,10 @@ def nnCostFunction(nn_params, input_layer_size, hidden_layer_size, \
 #               binary vector of 1's and 0's to be used with the neural network
 #               cost function.
 
-
 def nnGradient(nn_params, input_layer_size, hidden_layer_size, \
                    num_labels, X, y, reg_param):
+
+  #start_grad = timeit.default_timer()
 
 # Reshape nn_params back into the parameters Theta1 and Theta2, the weight matrices
 # for our 2 layer neural network
@@ -200,25 +208,40 @@ def nnGradient(nn_params, input_layer_size, hidden_layer_size, \
   D_1 = np.zeros((hidden_layer_size, input_layer_size+1))
   D_2 = np.zeros((num_labels, hidden_layer_size+1))
 
-  for i in range(m):
-    # forward propagation 
-    a_1 = np.append(1,X[i:i+1,:].T)   #a_1 = [1; X(i,:)'];
-    a_1 = np.reshape(a_1,(a_1.size,1))
-    z_2 = np.dot(Theta1,a_1)
-    a_2 = np.append(1,sigmoid(z_2))
-    a_2 = np.reshape(a_2,(a_2.size,1))
-    z_3 = np.dot(Theta2,a_2)
-    a_3 = sigmoid(z_3)
- 
-    # back propagation   
-    d_3 = a_3 - Y[i:i+1,:].T   #d_3 = a_3 - Y(i,:)';
-    d_2 = np.dot(Theta2.T,d_3)*np.vstack([1,sigmoidGrad(z_2)])
- 
-    D_2 = D_2 + np.dot(d_3,a_2.T)
-    D_1 = D_1 + np.dot(d_2[1:],a_1.T)
+  D_1x, D_2x = D_1, D_2
 
-  Theta1_grad = D_1/m
-  Theta2_grad = D_2/m
+  A1, Z2, A2, Z3, A3 = forward_prop(X, Theta1, Theta2)
+
+  d_3x = A3 - Y 
+  Z2_prime = np.append(np.ones((m,1)),sigmoidGrad(Z2),1)
+  d_2x = np.dot(Theta2.T,d_3x.T)*Z2_prime.T
+  
+  D_2x = np.dot(d_3x.T,A2)
+  D_1x = np.dot(d_2x[1:,:],A1)
+
+#  for i in range(m):
+#    # forward propagation 
+#    a_1 = np.append(1,X[i:i+1,:].T)   #a_1 = [1; X(i,:)'];
+#    a_1 = np.reshape(a_1,(a_1.size,1))
+#    z_2 = np.dot(Theta1,a_1)
+#    a_2 = np.append(1,sigmoid(z_2))
+#    a_2 = np.reshape(a_2,(a_2.size,1))
+#    z_3 = np.dot(Theta2,a_2)
+#    a_3 = sigmoid(z_3)
+# 
+#    # back propagation   
+#    d_3 = a_3 - Y[i:i+1,:].T   #d_3 = a_3 - Y(i,:)';
+#    d_2 = np.dot(Theta2.T,d_3)*np.vstack([1,sigmoidGrad(z_2)])
+# 
+#    #d_3x = A3[i:i+1,:] - Y[i:i+1,:]
+#    #print d_3.shape, d_3x.shape
+#    #print np.sum((d_3-d_3x))
+# 
+#    D_2 = D_2 + np.dot(d_3,a_2.T)
+#    D_1 = D_1 + np.dot(d_2[1:],a_1.T)
+
+  Theta1_grad = D_1x/m
+  Theta2_grad = D_2x/m
   
 # Part 3: Implement regularization with the cost function and gradients.
 
@@ -232,6 +255,8 @@ def nnGradient(nn_params, input_layer_size, hidden_layer_size, \
   
   Theta_grad_unrolled = np.append(Theta1_grad.T, Theta2_grad.T)
   
+  #end_grad = timeit.default_timer()
+  #print "Gradient run time: %f" %(end_grad-start_grad)
   return Theta_grad_unrolled
 
 ###########################################################
@@ -243,7 +268,8 @@ def main():
   hidden_layer_size = 50 #100 #25   # 25 hidden units
   num_labels = 9           # 10 labels, from 1 to 10  
 
-  print(" - Start")
+  print " - Begin!"
+  print " -- Job started at %s" %time.strftime('%X')
   X_train, X_valid, y_train, y_valid = load_train_data(0.8)
   X_test, ids = load_test_data()
   
@@ -268,8 +294,8 @@ def main():
   initial_nn_params = np.append(initial_Theta1.T, initial_Theta2.T)
 
   ###################  More Parameters:
-  reg_param = 1.   # regularization lambda
-  max_iters = 200   # for the optimizer
+  reg_param = 1.3   # regularization lambda
+  max_iters = 300 #500   # for the optimizer
   ########################################
   
   print "  Hidden Layer Size: %d" %hidden_layer_size
@@ -308,13 +334,13 @@ def main():
   start = time.clock()
 
   options = {'maxiter': max_iters, 'disp': True}
-  method = 'CG'#'Newton-CG'#'BFGS'#'CG'
+  method = 'Newton-CG'#'BFGS'#'CG'
   
   OptSolution = minimize(cost_train,initial_nn_params,jac=cost_grad,options=options, method=method)
   best_nn_params = OptSolution.x
   
   end = time.clock()
-  print " -- Elapsed time aprox: %.2f" %(end - start)
+  print " -- Elapsed time approx: %.2f" %(end - start)
 
   #best_nn_params = initial_nn_params
 
@@ -324,6 +350,12 @@ def main():
 
   Theta2 = np.reshape(best_nn_params[hidden_layer_size*(input_layer_size + 1):], \
                     (num_labels, (hidden_layer_size + 1)), order='F')
+
+
+  print " ** Training Set Cost: %.4f" %nnCostFunction(best_nn_params, input_layer_size, \
+          hidden_layer_size, num_labels, X_train, y_train, reg_param)
+  print " ** Validation Set Cost: %.4f" %nnCostFunction(best_nn_params, input_layer_size, \
+          hidden_layer_size, num_labels, X_valid, y_valid, reg_param)
 
   h_train = predict(Theta1, Theta2, X_train)
   pred_train = np.argmax(h_train,1)
